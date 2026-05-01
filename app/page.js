@@ -446,45 +446,73 @@ export default function App() {
   const toggle = (key) =>
     setOpen((p) => ({ ...p, [key]: !p[key] }));
 
+  /* =========================
+     DERIVED STATE (SAFE)
+  ========================= */
+
+  const inHandIds = new Set(hand.map((c) => c.id));
+  const completedIds = new Set(completed.map((c) => c.id));
+
   const available = CHALLENGES.filter(
-    (c) =>
-      !hand.find((x) => x.id === c.id) &&
-      !completed.find((x) => x.id === c.id)
+    (c) => !inHandIds.has(c.id) && !completedIds.has(c.id)
   );
+
+  /* =========================
+     ACTIONS
+  ========================= */
 
   const drawRandom = () => {
     if (hand.length >= 3) return;
-    const pool = available.filter((c) => !hand.includes(c));
+    const pool = available.filter((c) => !inHandIds.has(c.id));
     if (!pool.length) return;
+
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    setHand([...hand, pick]);
+    setHand((prev) => [...prev, pick]);
   };
 
   const drawHand = () => {
-    let newHand = [...hand];
-    const pool = available.filter((c) => !newHand.find((x) => x.id === c.id));
+    if (hand.length >= 3) return;
 
-    while (newHand.length < 3 && pool.length) {
-      const pick = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    let newHand = [...hand];
+    let pool = available.filter((c) => !inHandIds.has(c.id));
+
+    while (newHand.length < 3 && pool.length > 0) {
+      const idx = Math.floor(Math.random() * pool.length);
+      const pick = pool.splice(idx, 1)[0];
       newHand.push(pick);
     }
 
     setHand(newHand);
   };
 
+  const addToHand = (c) => {
+    if (hand.length >= 3) return;
+    if (inHandIds.has(c.id)) return;
+    setHand((prev) => [...prev, c]);
+  };
+
   const complete = (c) => {
-    setHand(hand.filter((x) => x.id !== c.id));
-    setCompleted([...completed, c]);
+    setHand((prev) => prev.filter((x) => x.id !== c.id));
+    setCompleted((prev) => [...prev, c]);
   };
 
   const discard = (c) => {
-    setHand(hand.filter((x) => x.id !== c.id));
+    setHand((prev) => prev.filter((x) => x.id !== c.id));
   };
 
   const resetAll = () => {
-    if (!confirm("Reset all completed challenges?")) return;
+    if (!confirm("Reset ALL completed challenges?")) return;
     setCompleted([]);
   };
+
+  const removeCompleted = (c) => {
+    if (!confirm("Remove this completed challenge?")) return;
+    setCompleted((prev) => prev.filter((x) => x.id !== c.id));
+  };
+
+  /* =========================
+     UI COMPONENTS
+  ========================= */
 
   const Card = ({ c, children }) => (
     <li className="border p-3 my-2 rounded">
@@ -498,7 +526,7 @@ export default function App() {
 
   const Section = ({ title, k, children }) => (
     <div className="mb-6">
-      <div className="flex justify-between">
+      <div className="flex justify-between items-center">
         <h2 className="font-semibold">{title}</h2>
         <button className="border px-2" onClick={() => toggle(k)}>
           {open[k] ? "Collapse" : "Expand"}
@@ -508,19 +536,30 @@ export default function App() {
     </div>
   );
 
+  /* =========================
+     RENDER
+  ========================= */
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Challenge Deck</h1>
 
+      {/* HAND */}
       <Section title="Hand (max 3)" k="hand">
         {hand.length === 0 && <p>No cards</p>}
         <ul>
           {hand.map((c) => (
             <Card key={c.id} c={c}>
-              <button onClick={() => complete(c)} className="bg-green-500 text-white px-2 mr-2">
+              <button
+                onClick={() => complete(c)}
+                className="bg-green-500 text-white px-2 mr-2"
+              >
                 Complete
               </button>
-              <button onClick={() => discard(c)} className="bg-red-500 text-white px-2">
+              <button
+                onClick={() => discard(c)}
+                className="bg-red-500 text-white px-2"
+              >
                 Discard
               </button>
             </Card>
@@ -528,20 +567,32 @@ export default function App() {
         </ul>
       </Section>
 
+      {/* ACTIONS */}
       <div className="mb-4 space-x-2">
-        <button onClick={drawRandom} className="bg-blue-500 text-white px-3">
+        <button
+          onClick={drawRandom}
+          className="bg-blue-500 text-white px-3"
+        >
           Draw Random
         </button>
-        <button onClick={drawHand} className="bg-indigo-500 text-white px-3">
+
+        <button
+          onClick={drawHand}
+          className="bg-indigo-500 text-white px-3"
+        >
           Draw Hand
         </button>
       </div>
 
+      {/* CHOOSE */}
       <Section title="Choose Challenges" k="choose">
         <ul>
           {available.map((c) => (
             <Card key={c.id} c={c}>
-              <button onClick={() => setHand([...hand, c])} className="bg-purple-500 text-white px-2">
+              <button
+                onClick={() => addToHand(c)}
+                className="bg-purple-500 text-white px-2"
+              >
                 Add
               </button>
             </Card>
@@ -549,19 +600,20 @@ export default function App() {
         </ul>
       </Section>
 
+      {/* COMPLETED */}
       <Section title="Completed Challenges" k="completed">
-        <button onClick={resetAll} className="border px-2 mb-2">
+        <button
+          onClick={resetAll}
+          className="border px-2 mb-2"
+        >
           Reset All
         </button>
+
         <ul>
           {completed.map((c) => (
             <Card key={c.id} c={c}>
               <button
-                onClick={() => {
-                  if (confirm("Remove this completion?")) {
-                    setCompleted(completed.filter((x) => x.id !== c.id));
-                  }
-                }}
+                onClick={() => removeCompleted(c)}
                 className="bg-red-600 text-white px-2"
               >
                 Remove
